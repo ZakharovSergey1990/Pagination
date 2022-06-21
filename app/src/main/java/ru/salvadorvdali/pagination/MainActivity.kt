@@ -5,16 +5,14 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.MutatePriority
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -45,7 +43,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(), color = MaterialTheme.colors.background
                 ) {
 
-                    Pagination<User>(itemFactory = factory, batchSize = 20) { user ->
+                    Pagination<User>(scrollToID = MutableStateFlow(users[0].uuid), itemFactory = factory, batchSize = 20) { user ->
                         Text(
                             user.name,
                             modifier = Modifier.padding(10.dp),
@@ -63,11 +61,9 @@ class MainActivity : ComponentActivity() {
 fun <T : Identifiable> Pagination(
     itemFactory: ItemFactory<T>,
     batchSize: Int,
-    scrollToIndex: Flow<Int> = MutableStateFlow(0),
+    scrollToID: Flow<String?> = MutableStateFlow(null),
     contentItem: @Composable (T) -> Unit
 ) {
-
-    val scrollIndex by scrollToIndex.collectAsState(initial = 0)
     var list = remember { mutableStateListOf<T>() }
     var initialId by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
@@ -75,91 +71,94 @@ fun <T : Identifiable> Pagination(
     var isForwardDirection = true
     var firstVisibleItemIndex = 0
     val state = rememberLazyListState()
+    val scrollId by scrollToID.collectAsState(initial = "")
 
-
-    LaunchedEffect(key1 = itemFactory) {
-        val items = itemFactory.loadItems(0, batchSize = batchSize * 4, true)
-        list.addAll(items)
-    }
-
-
-    LazyColumn(state = state, modifier = Modifier) {
-        itemsIndexed(list) { index, item ->
-            Log.d("Pagination", "item = $item")
-            Log.d("Pagination", "state.firstVisibleItemIndex = ${state.firstVisibleItemIndex} ")
-            Log.d("Pagination", "firstVisibleItemIndex = ${firstVisibleItemIndex} ")
-            if (state.isScrollInProgress) {
-                when {
-                    state.firstVisibleItemIndex > firstVisibleItemIndex -> {
-                        Log.d("Pagination", "isForwardDirection ")
-                        isForwardDirection = true
-                        firstVisibleItemIndex = state.firstVisibleItemIndex
-                    }
-
-                    state.firstVisibleItemIndex < firstVisibleItemIndex -> {
-                        Log.d("Pagination", "!isForwardDirection")
-                        isForwardDirection = false
-                        firstVisibleItemIndex = state.firstVisibleItemIndex
-                    }
-                }
-            }
-            LaunchedEffect(index) {
-                when {
-                    index == batchSize * 3 && isForwardDirection -> {
-                        isLoading = true
-                        val items =
-                            itemFactory.loadItems(list.last().getID(), batchSize = batchSize, true)
-                        Log.d("Pagination", "items = ${items}")
-                        val firstVisibleItem = state.firstVisibleItemIndex
-                        val firstVisibleItemOffcet = state.firstVisibleItemScrollOffset
-                        Log.d(
-                            "Pagination",
-                            "firstVisibleItem = $firstVisibleItem, firstVisibleItemOffcet = $firstVisibleItemOffcet"
-                        )
-                        list.removeRange(0, batchSize)
-                        list.addAll(items)
-                        Log.d("Pagination", "scrollToItem ${firstVisibleItem - batchSize}")
-                        state.scroll(scrollPriority = MutatePriority.PreventUserInput) { }
-                        state.scrollToItem(firstVisibleItem - batchSize, firstVisibleItemOffcet)
-                        Log.d("Pagination", "scrollToItem firstVisibleItem = $firstVisibleItem")
-                        Log.d("Pagination", "list2 = ${list.size}")
-                        isLoading = false
-                    }
-                    index == batchSize && !isForwardDirection -> {
-                        Log.d("Pagination", "index == batchSize && !isForwardDirection")
-                        isLoading = true
-                        val items =
-                            itemFactory.loadItems(list[0].getID(), batchSize = batchSize, false)
-                        Log.d("Pagination", "items = ${items}")
-                        val firstVisibleItem = state.firstVisibleItemIndex
-                        val firstVisibleItemOffcet = state.firstVisibleItemScrollOffset
-                        Log.d(
-                            "Pagination",
-                            "firstVisibleItem = $firstVisibleItem, firstVisibleItemOffcet = $firstVisibleItemOffcet"
-                        )
-                        list.removeRange(list.size - items.size, list.size)
-                        list.addAll(0, items)
-                        Log.d("Pagination", "scrollToItem ${firstVisibleItem - batchSize}")
-                        state.scroll(scrollPriority = MutatePriority.PreventUserInput) { }
-                        state.scrollToItem(firstVisibleItem + items.size, firstVisibleItemOffcet)
-                        Log.d("Pagination", "scrollToItem firstVisibleItem = $firstVisibleItem")
-                        Log.d("Pagination", "list2 = ${list.size}")
-                        isLoading = false
-                    }
-                    else -> Unit
-                }
-
-            }
-            contentItem(item)
+    if(scrollId.isNullOrBlank()){
+        // initial list
+   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+       CircularProgressIndicator()
         }
-        if (isLoading) {
-            item {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    CircularProgressIndicator()
+    }
+    else{
+        LaunchedEffect(scrollId) {
+            val items = itemFactory.loadMoreDirectionItems(scrollId!!, batchSize = batchSize * 4)
+            list.addAll(items)
+        }
+        LazyColumn(state = state, modifier = Modifier) {
+            itemsIndexed(list) { index, item ->
+                Log.d("Pagination", "item = $item")
+                Log.d("Pagination", "state.firstVisibleItemIndex = ${state.firstVisibleItemIndex} ")
+                Log.d("Pagination", "firstVisibleItemIndex = ${firstVisibleItemIndex} ")
+                if (state.isScrollInProgress) {
+                    when {
+                        state.firstVisibleItemIndex > firstVisibleItemIndex -> {
+                            Log.d("Pagination", "isForwardDirection ")
+                            isForwardDirection = true
+                            firstVisibleItemIndex = state.firstVisibleItemIndex
+                        }
+                        state.firstVisibleItemIndex < firstVisibleItemIndex -> {
+                            Log.d("Pagination", "!isForwardDirection")
+                            isForwardDirection = false
+                            firstVisibleItemIndex = state.firstVisibleItemIndex
+                        }
+                    }
+                }
+                LaunchedEffect(index) {
+                    when {
+                        index == batchSize * 3 && isForwardDirection -> {
+                            isLoading = true
+                            val items = itemFactory.loadMoreDirectionItems(list.last().getID(), batchSize = batchSize)
+                            Log.d("Pagination", "items = ${items}")
+                            val firstVisibleItem = state.firstVisibleItemIndex
+                            val firstVisibleItemOffcet = state.firstVisibleItemScrollOffset
+                            Log.d("Pagination", "firstVisibleItem = $firstVisibleItem, firstVisibleItemOffcet = $firstVisibleItemOffcet")
+                            list.removeRange(0, batchSize)
+                            list.addAll(items)
+                            Log.d("Pagination", "scrollToItem ${firstVisibleItem - batchSize}")
+                            state.scroll(scrollPriority = MutatePriority.PreventUserInput) { }
+                            state.scrollToItem(firstVisibleItem - batchSize, firstVisibleItemOffcet)
+                            Log.d("Pagination", "scrollToItem firstVisibleItem = $firstVisibleItem")
+                            Log.d("Pagination", "list2 = ${list.size}")
+                            isLoading = false
+                        }
+                        index == batchSize && !isForwardDirection -> {
+                            Log.d("Pagination", "index == batchSize && !isForwardDirection")
+                            isLoading = true
+                            val items = itemFactory.loadLessDirectionItems(list[0].getID(), batchSize = batchSize)
+                            Log.d("Pagination", "items = ${items}")
+                            val firstVisibleItem = state.firstVisibleItemIndex
+                            val firstVisibleItemOffcet = state.firstVisibleItemScrollOffset
+                            Log.d("Pagination", "firstVisibleItem = $firstVisibleItem, firstVisibleItemOffcet = $firstVisibleItemOffcet")
+                            list.removeRange(list.size - items.size, list.size)
+                            list.addAll(0, items)
+                            Log.d("Pagination", "scrollToItem ${firstVisibleItem - batchSize}")
+                            state.scroll(scrollPriority = MutatePriority.PreventUserInput) { }
+                            state.scrollToItem(firstVisibleItem + items.size, firstVisibleItemOffcet)
+                            Log.d("Pagination", "scrollToItem firstVisibleItem = $firstVisibleItem")
+                            Log.d("Pagination", "list2 = ${list.size}")
+                            isLoading = false
+                        }
+                        else -> Unit
+                    }
+                }
+                contentItem(item)
+            }
+            if (isLoading) {
+                item {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        CircularProgressIndicator()
+                    }
                 }
             }
         }
+
     }
+
+
+
+
+
+
 
     @Composable
     fun getItems() { ////
@@ -172,9 +171,10 @@ fun <T : Identifiable> Pagination(
 interface Paging
 
 data class User(
-    val name: String, val id: Int
+    val name: String,
+    val uuid: String
 ) : Identifiable {
-    override fun getID() = id
+    override fun getID() = uuid
 }
 
 
