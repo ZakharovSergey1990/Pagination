@@ -2,6 +2,7 @@ package ru.salvadorvdali.pagination
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.*
 
@@ -28,12 +29,15 @@ class Datasource {
        return withContext(Dispatchers.IO) {
            Log.d("Pagination", "getUsersList: initialId = ${itemId}")
            Log.d("Pagination", "getUsersList: delay ")
+           delay(3000)
            if(isMoreDirection){
                val index = users.indexOfFirst { it.uuid == itemId }
-               val secondIndex = index + batchSize
+               var secondIndex = index + batchSize
+               if(secondIndex > users.size ){
+                   secondIndex = users.size
+               }
                val result = users.subList(index, secondIndex)
                Log.d("Pagination", "getUsersList: result = ${result.map { it.name }}")
-               // delay(2000)
                result
            }
            else{
@@ -41,10 +45,8 @@ class Datasource {
                val startIndex = if((index - batchSize)>0) index - batchSize else 0
                val result = users.subList(startIndex, index)
                Log.d("Pagination", "getUsersList: result = ${result.map { it.name }}")
-               // delay(2000)
                result
            }
-
        }
     }
 }
